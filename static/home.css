@@ -1,0 +1,908 @@
+/* The home screen: hero, the drop window, how it works, your videos, and the
+   two walls of example clips either side. home.js drives the moving parts. */
+
+@property --px { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --py { syntax: "<number>"; inherits: false; initial-value: 0; }
+
+:root {
+  --center: 600px;
+  --reel-w: clamp(120px, 10.6vw, 176px);
+  --reel-gap: 14px;
+  --reel-ring: rgba(255, 255, 255, .1);
+  --reel-shadow: rgba(0, 0, 0, .9);
+  --reel-dim: rgba(5, 5, 6, .16);
+  --icon-bg: radial-gradient(circle at 32% 24%, rgba(255, 255, 255, .26), rgba(255, 255, 255, .04) 62%);
+  --moment-line: rgba(255, 214, 10, .75);
+  --moment-fill: rgba(255, 214, 10, .12);
+  --aura: rgba(255, 255, 255, .05);
+  --glow-k: .34;
+}
+:root[data-theme="light"] {
+  --reel-ring: rgba(0, 0, 0, .08);
+  --reel-shadow: rgba(0, 0, 0, .35);
+  --reel-dim: rgba(5, 5, 6, .02);
+  --icon-bg: linear-gradient(180deg, #ffffff, #ececf0);
+  --moment-line: #dc9b00;
+  --moment-fill: rgba(255, 196, 0, .16);
+  --aura: rgba(255, 255, 255, .55);
+  --glow-k: .42;
+}
+
+/* Home is two parts: the hero, one screen tall with the walls sharp around it,
+   and below it a plain, wider page, with the walls blurred behind (home.js). */
+body[data-screen="home"] main { max-width: 912px; padding-top: var(--bar-h); }
+.intro {
+  display: flex; flex-direction: column; justify-content: center;
+  max-width: var(--center);
+  min-height: calc(100svh - var(--bar-h));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+.below { max-width: 880px; margin: 0 auto; padding-top: 48px; }
+.below h2 { font-size: 30px; letter-spacing: -.035em; }
+
+.veil {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  opacity: 0;
+  visibility: hidden;
+}
+/* The walls' blur is one fixed strength, switched on once below the hero:
+   changing a blur's strength every frame is what made scrolling stutter. */
+body.veiled .reels { filter: blur(14px); }
+body:not([data-screen="home"]) .veil { display: none; }
+body.veiled .reel-side { pointer-events: none; }
+
+/* ---- first-load choreography (once per visit; home.js adds .entered) ---- */
+body:not(.entered) .reveal,
+body:not(.entered) .headline .w {
+  animation: enter 1.1s var(--ease) both;
+  animation-delay: calc(var(--d) * 70ms + 150ms);
+}
+body:not(.entered) .bar { animation: bar-in .9s var(--ease) both; }
+body:not(.entered) .drop-wrap { animation: drop-in 1.2s var(--spring) both; animation-delay: .62s; }
+@keyframes enter { from { opacity: 0; transform: translateY(22px); } }
+@keyframes bar-in { from { opacity: 0; transform: translateY(-100%); } }
+@keyframes drop-in { from { opacity: 0; transform: translateY(-44px) scale(.95); } }
+@keyframes fade { from { opacity: 0; } }
+
+/* ---- hero ---- */
+.hero { text-align: center; }
+
+.headline {
+  margin: 20px 0 18px;
+  font-size: clamp(42px, 9vw, 68px);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -.045em;
+  overflow-wrap: normal;
+}
+.headline .line { display: block; white-space: nowrap; }
+.headline .w { display: inline-block; }
+.headline .line + .line { margin-top: .02em; }
+
+.rotator {
+  position: relative;
+  height: 1.14em;
+  vertical-align: top;
+  text-align: left;
+  perspective: 600px;
+  transition: width .8s var(--spring-soft);
+}
+.rot-word {
+  position: absolute; left: 0; top: 0;
+  white-space: nowrap;
+  padding-right: .04em;
+  background: var(--ai-text);
+  background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  opacity: 0;
+  transform: translateY(.5em) rotateX(-40deg);
+  filter: blur(10px);
+  transition: opacity .55s var(--ease), transform .9s var(--spring-soft), filter .55s var(--ease);
+  animation: ai-flow 7s linear infinite;
+}
+.rot-word.is-on { position: relative; opacity: 1; transform: none; filter: none; }
+.rotator.ready .rot-word { position: absolute; }
+.rot-word.is-out { opacity: 0; transform: translateY(-.5em) rotateX(40deg); filter: blur(10px); }
+@keyframes ai-flow { from { background-position: 0 0; } to { background-position: 220% 0; } }
+
+
+/* ---- the drop window ---- */
+.drop-wrap { position: relative; margin-top: 38px; perspective: 1400px; }
+
+.drop-glow {
+  /* a colour wheel spun behind the card, blurred, with its middle cut out */
+  position: absolute; left: 50%; top: 52%;
+  width: 108%; aspect-ratio: 1;
+  translate: -50% -50%;
+  scale: 1 .66;
+  overflow: clip;           /* the wheel's corners would widen the page as it turns */
+  pointer-events: none;
+  opacity: var(--glow-k);
+  -webkit-mask: radial-gradient(closest-side, transparent 52%, #000 74%, transparent 100%);
+  mask: radial-gradient(closest-side, transparent 52%, #000 74%, transparent 100%);
+  transition: opacity .7s var(--ease), scale .9s var(--spring-soft);
+}
+.drop-glow::before {
+  content: ""; position: absolute; inset: 6%; border-radius: 50%;
+  background: conic-gradient(#ffb340, #ff5e8a, #a77bff, #5ac8fa, #64d2a4, #ffb340);   /* the ring mask softens it; no blur filter */
+  animation: turn 14s linear infinite;
+}
+.drop-wrap:has(.drop:hover) .drop-glow { opacity: calc(var(--glow-k) + .16); }
+.drop-wrap:has(.over) .drop-glow, body.dragging .drop-glow { opacity: .9; scale: 1.06 .74; }
+.drop-wrap:has(.sending) .drop-glow { opacity: .7; }
+.drop-wrap:has(.sending) .drop-glow::before { animation-duration: 4s; }
+@keyframes turn { to { transform: rotate(1turn); } }
+
+.drop-card {
+  position: relative;
+  z-index: 1;
+  padding: 8px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo) 60%), var(--glass-tint);
+  border: 1px solid var(--line);
+  box-shadow: var(--rim), var(--lift);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+  transition: scale .7s var(--spring);
+}
+body.dragging .drop-card, .drop-card:has(.over) { scale: 1.025; }
+
+.drop-ring {
+  /* two comets of light chasing round the border */
+  position: absolute; inset: -1px; z-index: 3;
+  border-radius: inherit;
+  padding: 1.2px;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.drop-ring::before {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: 150%; aspect-ratio: 1;
+  translate: -50% -50%;
+  background: conic-gradient(
+    transparent 0turn, transparent .22turn,
+    rgba(255, 94, 138, 0) .26turn, rgba(255, 94, 138, .9) .43turn, #ffb340 .47turn, transparent .475turn,
+    transparent .72turn,
+    rgba(90, 200, 250, 0) .76turn, rgba(167, 123, 255, .9) .93turn, #5ac8fa .97turn, transparent .975turn);
+  animation: turn 7s linear infinite;
+}
+.drop-wrap:has(.over) .drop-ring::before, body.dragging .drop-ring::before {
+  background: conic-gradient(#ffb340, #ff5e8a, #a77bff, #5ac8fa, #ffb340);
+}
+
+.drop-sheen {
+  /* glass catching the light where the pointer is */
+  position: absolute; inset: 0; z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(380px circle at var(--mx, 50%) var(--my, -20%), var(--aura), transparent 55%);
+  opacity: 0;
+  transition: opacity .6s var(--ease);
+}
+.drop-card:hover .drop-sheen { opacity: 1; }
+
+.drop {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px;
+  padding: 32px 26px 20px;
+  border-radius: var(--r-md);
+  text-align: center;
+  cursor: pointer;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: background .5s var(--ease), box-shadow .5s var(--ease);
+}
+.drop:hover { background: color-mix(in srgb, var(--well) 60%, transparent); }
+.drop.over, body.dragging .drop { box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 0 60px -10px rgba(167, 123, 255, .35); }
+body.dragging .drop * { pointer-events: none; }
+
+.drop-icon {
+  position: relative;
+  display: grid; place-items: center;
+  width: 64px; height: 64px;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  background: var(--icon-bg);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 14px 30px -12px var(--reel-shadow), 0 0 44px -8px rgba(255, 94, 138, .45);
+  animation: bob 4.5s ease-in-out infinite;
+  transition: scale .7s var(--spring);
+}
+.drop:hover .drop-icon { scale: 1.06; }
+.drop.over .drop-icon, body.dragging .drop-icon { scale: 1.2; }
+@keyframes bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -5px; } }
+.pulse {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--text) 30%, transparent);
+  animation: pulse 3.6s var(--ease) infinite;
+}
+.pulse + .pulse { animation-delay: 1.8s; }
+.drop.over .pulse, body.dragging .pulse { animation-duration: 1.4s; }
+@keyframes pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(2.4); opacity: 0; } }
+
+.glyph {
+  position: absolute;
+  width: 26px; height: 26px;
+  fill: none; stroke: var(--text); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+  transition: opacity .4s var(--ease), transform .7s var(--spring);
+}
+.drop:hover .glyph-up path, body.dragging .glyph-up path { animation: nudge 1.2s var(--ease) infinite; }
+@keyframes nudge { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-3px); } }
+.glyph-ok { opacity: 0; transform: scale(.4) rotate(-20deg); stroke: var(--good); }
+.glyph-ok path { stroke-dasharray: 20; stroke-dashoffset: 20; transition: stroke-dashoffset .6s var(--ease) .15s; }
+.drop.chosen .glyph-up { opacity: 0; transform: translateY(-14px) scale(.6); }
+.drop.chosen .glyph-ok { opacity: 1; transform: none; }
+.drop.chosen .glyph-ok path { stroke-dashoffset: 0; }
+.drop.chosen .drop-icon { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--good) 55%, transparent), 0 14px 30px -12px var(--reel-shadow), 0 0 44px -6px color-mix(in srgb, var(--good) 50%, transparent); }
+.drop.chosen .pulse { border-color: color-mix(in srgb, var(--good) 50%, transparent); }
+.drop-icon::after {
+  /* spinner while the browser reads the file's length */
+  content: ""; position: absolute; inset: -5px; border-radius: 50%;
+  background: conic-gradient(transparent 0 .6turn, var(--text));
+  -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  opacity: 0;
+  transition: opacity .3s;
+  animation: turn .9s linear infinite;
+}
+.drop.reading .drop-icon::after { opacity: 1; }
+
+#drop-title { max-width: 100%; font-size: 19px; font-weight: 600; letter-spacing: -.02em; overflow-wrap: anywhere; }
+#drop-hint { font-size: 13.5px; color: var(--muted); }
+.drop-release {
+  position: absolute; left: 0; right: 0; top: 110px;
+  font-size: 19px; font-weight: 600; letter-spacing: -.02em;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity .35s var(--ease), transform .5s var(--spring);
+  pointer-events: none;
+}
+#drop-title, #drop-hint { transition: opacity .3s var(--ease), transform .5s var(--ease); }
+body.dragging #drop-title, body.dragging #drop-hint { opacity: 0; transform: translateY(-6px); }
+body.dragging .drop-release { opacity: 1; transform: none; }
+
+/* what Clipsy does, told on a filmstrip of a long video (home.js, startScan) */
+.scan { position: relative; display: block; width: 100%; margin-top: 24px; user-select: none; }
+.scan-arc { position: relative; display: block; height: 30px; }
+.scan-arc svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; clip-path: inset(0 100% 0 0); }
+.scan-arc path { fill: none; stroke: var(--moment-line); stroke-width: 1.3; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+.scan-tag {
+  position: absolute; left: 43.5%; top: -2px;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px 2px 6px;
+  border-radius: var(--r-xs);
+  font-size: 11px; font-weight: 500; white-space: nowrap; color: var(--text);
+  background: var(--menu);
+  box-shadow: inset 0 0 0 1px var(--moment-line), 0 6px 20px -6px rgba(0, 0, 0, .4);
+  translate: -50% 0;
+  opacity: 0;
+}
+.scan-tag svg { width: 12px; height: 12px; fill: none; stroke: var(--moment-line); stroke-width: 1.5; stroke-linecap: round; }
+/* a filmstrip of the long video: grey where it has not been read, colour where it has */
+.scan-film { position: relative; display: block; height: 62px; overflow-x: clip; }
+.film { position: absolute; inset: 0; display: flex; gap: 2px; }
+.film i { flex: 1; min-width: 0; border-radius: 3px; background: center / cover no-repeat; }
+.film-dim { filter: grayscale(1) brightness(.5); }
+:root[data-theme="light"] .film-dim { filter: grayscale(1) contrast(.85) brightness(1.15); opacity: .6; }
+.film-lit { clip-path: inset(0 100% 0 0); }
+.film-lit i { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+/* an editor's ruler under it: a long tick every quarter, a short one every 5% */
+.scan-ruler {
+  display: block; height: 7px; margin-top: 5px;
+  background:
+    repeating-linear-gradient(90deg, var(--faint) 0 1px, transparent 1px 25%) 0 0 / 100% 7px no-repeat,
+    repeating-linear-gradient(90deg, var(--line-strong) 0 1px, transparent 1px 5%) 0 100% / 100% 4px no-repeat;
+}
+.scan-moment {
+  position: absolute; top: -3px; bottom: -3px;
+  left: var(--l); width: var(--w);
+  border-radius: 3px;
+  background: var(--moment-fill);
+  box-shadow: inset 0 0 0 1px var(--moment-line), 0 0 22px -2px color-mix(in srgb, var(--moment-line) 45%, transparent);
+  opacity: 0;
+}
+.scan-head { position: absolute; inset: -8px 0; display: block; pointer-events: none; }
+.scan-head i {
+  position: absolute; left: -1px; top: 0; bottom: 0; width: 2px; border-radius: 1px;
+  background: var(--text);
+  box-shadow: 0 0 10px 1px color-mix(in srgb, var(--text) 60%, transparent), 0 0 34px 6px rgba(167, 123, 255, .45);
+}
+.scan-times {
+  position: relative;
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 4px;
+  font-size: 11px; color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+/* Centred under the strip, whatever the (hidden) step name beside it takes up. */
+.scan-sent { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; color: var(--text); font-weight: 500; }
+
+/* cutting: the cuts snap in at each moment's edges and the rest darkens */
+.scan-shade {
+  position: absolute; inset: -3px 0; display: block;
+  background: rgba(0, 0, 0, .66);
+  -webkit-mask: linear-gradient(90deg, #000 0 5%, transparent 5% 11.5%, #000 11.5% 39%, transparent 39% 46%, #000 46% 75.5%, transparent 75.5% 82%, #000 82%);
+  mask: linear-gradient(90deg, #000 0 5%, transparent 5% 11.5%, #000 11.5% 39%, transparent 39% 46%, #000 46% 75.5%, transparent 75.5% 82%, #000 82%);
+  opacity: 0;
+}
+:root[data-theme="light"] .scan-shade { background: rgba(245, 245, 247, .74); }
+.scan-cut {
+  position: absolute; top: -8px; bottom: -8px; left: var(--x);
+  width: 2px; margin-left: -1px; border-radius: 1px;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, .8);
+  opacity: 0;
+}
+:root[data-theme="light"] .scan-cut { background: var(--text); box-shadow: 0 0 6px rgba(0, 0, 0, .25); }
+
+/* reframing: a 9:16 frame picks the speaker out of the wide shot */
+.scan-crop {
+  position: absolute; top: 3px; bottom: 3px; left: 50%;
+  aspect-ratio: 9 / 16;
+  translate: -50% 0;
+  border: 1.5px solid #fff;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 0 10px rgba(255, 255, 255, .45);
+  opacity: 0;
+}
+
+/* which step the story is on, where 0:00 would be */
+.scan-steps { display: inline-grid; }
+.scan-step {
+  grid-area: 1 / 1;
+  display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+  font-size: 11px; font-weight: 500; color: var(--text);
+  opacity: 0;
+}
+.scan-step svg { width: 12px; height: 12px; fill: none; stroke: var(--moment-line); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+/* captioning: the finished short rises out of the strip */
+.scan-clip {
+  position: absolute; z-index: 4; left: 50%; top: -12px; bottom: 0;
+  aspect-ratio: 9 / 16;
+  translate: -50% 0;
+  container-type: size;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .22), 0 16px 34px -10px rgba(0, 0, 0, .7), 0 0 34px -6px rgba(255, 214, 10, .4);
+  opacity: 0;
+}
+.clip-frame { position: absolute; inset: 0; background: center / cover no-repeat; opacity: 0; }
+.clip-setup { background-image: url("home-media/film-0.webp"); }
+.clip-payoff { background-image: url("home-media/film-9.webp"); }
+.clip-frame::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 45%, rgba(0, 0, 0, .55)); }
+.clip-line {
+  position: absolute; left: 4%; right: 4%; top: 60%;
+  text-align: center;
+  font: 800 13cqw/1.1 Arial, "Helvetica Neue", sans-serif;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: .06em .06em 0 #000, -.06em .06em 0 #000, .06em -.06em 0 #000, -.06em -.06em 0 #000;
+  opacity: 0;
+}
+.clip-bar { position: absolute; left: 8%; right: 8%; bottom: 6%; height: 2px; background: rgba(255, 255, 255, .3); overflow: hidden; }
+.clip-bar i { display: block; height: 100%; background: #fff; transform-origin: 0 50%; transform: scaleX(0); }
+
+/* while uploading the filmstrip itself is the progress bar */
+.drop-card.sending .film-lit { clip-path: inset(0 calc(100% - var(--sent, 0%)) 0 0); transition: clip-path .5s var(--ease); }
+.drop-card.sending .scan-head { transform: translateX(var(--sent, 0%)); transition: transform .5s var(--ease); }
+.drop-card.sending :is(.scan-moment, .scan-arc, .scan-shade, .scan-cut, .scan-clip, .scan-steps) { opacity: 0; transition: opacity .4s; }
+
+/* One button: the language is detected, so there is nothing else to ask. */
+.drop-controls { display: flex; padding: 10px 2px 2px; }
+.drop-controls .primary { flex: 1; justify-content: center; }
+#upload-progress { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.primary {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 16px 10px 20px;
+  font-size: 14.5px;
+  overflow: hidden;
+  transition: background .3s var(--ease), color .3s var(--ease), box-shadow .5s var(--ease), transform .25s var(--ease);
+}
+.primary svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .5s var(--spring); }
+.primary:hover:not(:disabled) svg { transform: translateX(3px); }
+.primary:disabled { opacity: 1; background: var(--fill); color: var(--faint); border-color: var(--line); }
+.primary:not(:disabled) { box-shadow: 0 12px 30px -10px color-mix(in srgb, var(--primary) 55%, transparent); animation: ready .9s var(--spring); }
+.primary:not(:disabled)::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--on-primary) 22%, transparent) 50%, transparent 70%);
+  transform: translateX(-130%);
+  animation: sheen 3.6s var(--ease) 1s infinite;
+}
+@keyframes ready { from { transform: scale(.9); } }
+
+/* Get started: Clipsy's own gradient, drifting slowly under the label, a glow
+   in the same colours beneath it, and the glint (.primary::after) across it.
+   Picking a video replays the pop (.go): grey to full colour with a bounce.
+   The drift moves a wide layer sideways, so only the compositor works. */
+#upload-button {
+  isolation: isolate;
+  min-height: 50px; padding: 12px 22px;
+  border: 0; color: #fff; background: #26262b;
+  font-size: 15.5px; font-weight: 700; letter-spacing: -.01em;
+  text-shadow: 0 1px 2px rgba(60, 10, 40, .25);
+  box-shadow: 0 16px 34px -14px rgba(255, 94, 138, .75), 0 12px 32px -16px rgba(167, 123, 255, .8),
+              inset 0 1px 0 rgba(255, 255, 255, .35);
+  transition: transform .4s var(--spring), box-shadow .4s var(--ease), filter .3s var(--ease);
+}
+#upload-button::before {
+  content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: 0; width: 220%;
+  background: linear-gradient(100deg, #ffa53d 0%, #ff5e8a 22%, #b06bff 45%, #4fb2ff 62%, #ff5e8a 80%, #ffa53d 100%);
+  animation: cta-drift 9s ease-in-out infinite alternate;
+}
+#upload-button::after { background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .42) 50%, transparent 70%); }
+#upload-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: saturate(1.15) brightness(1.04);
+  box-shadow: 0 22px 40px -14px rgba(255, 94, 138, .85), 0 16px 40px -14px rgba(167, 123, 255, .9),
+              inset 0 1px 0 rgba(255, 255, 255, .4);
+}
+#upload-button:active:not(:disabled) { transform: scale(.98); transition-duration: .1s; }
+#upload-button.go { animation: cta-pop .9s var(--spring), cta-bloom .8s var(--ease); }
+/* On a light page the full gradient is too loud: solid ink, the colour kept to the glow beneath. */
+:root[data-theme="light"] #upload-button {
+  background: #141418; text-shadow: none;
+  box-shadow: 0 14px 30px -14px rgba(255, 94, 138, .55), 0 10px 28px -14px rgba(167, 123, 255, .6),
+              inset 0 1px 0 rgba(255, 255, 255, .14);
+}
+:root[data-theme="light"] #upload-button::before { display: none; }
+:root[data-theme="light"] #upload-button::after { background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .2) 50%, transparent 70%); }
+:root[data-theme="light"] #upload-button:hover:not(:disabled) {
+  filter: none;
+  box-shadow: 0 20px 36px -14px rgba(255, 94, 138, .7), 0 14px 34px -14px rgba(167, 123, 255, .75),
+              inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+#upload-button:disabled, :root[data-theme] #upload-button:disabled { background: var(--fill); color: var(--faint); text-shadow: none; box-shadow: none; }
+#upload-button:disabled::before { opacity: 0; animation: none; }
+@keyframes cta-drift { from { transform: translateX(0); } to { transform: translateX(-54.5%); } }
+@keyframes cta-pop { 0% { transform: scale(.92); } 45% { transform: scale(1.045); } 100% { transform: none; } }
+@keyframes cta-bloom { from { filter: saturate(0) brightness(1.1); } 45% { filter: saturate(1.7) brightness(1.15); } to { filter: none; } }
+
+/* ---- the glass dropdown (home.js turns the language <select> into this) ---- */
+.gsel { display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px 8px 10px; font-size: 14px; font-weight: 500; }
+.gsel svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.gsel-globe { color: var(--muted); }
+.gsel-value { position: relative; display: inline-grid; overflow: hidden; min-width: 2ch; text-align: left; }
+.gsel-value > span { grid-area: 1 / 1; white-space: nowrap; transition: transform .55s var(--spring-soft), opacity .3s var(--ease); }
+.gsel-value > span.leaving { transform: translateY(-110%); opacity: 0; }
+.gsel-value > span.coming { transform: translateY(110%); opacity: 0; }
+.gsel-chev { color: var(--muted); transition: rotate .6s var(--spring-soft); }
+.gsel[aria-expanded="true"] { background: var(--fill-hover); border-color: var(--line-strong); }
+.gsel[aria-expanded="true"] .gsel-chev { rotate: 180deg; }
+
+.gsel-menu {
+  position: fixed; z-index: 100;
+  min-width: 230px;
+  max-height: min(380px, 60vh);
+  overflow-y: auto;
+  padding: 5px;
+  border-radius: var(--r-md);
+  background: var(--menu);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--rim), 0 34px 90px -16px rgba(0, 0, 0, .55), 0 0 0 .5px rgba(0, 0, 0, .2);
+  -webkit-backdrop-filter: blur(34px) saturate(190%);
+  backdrop-filter: blur(34px) saturate(190%);
+  transform-origin: top left;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scale(.94);
+  transition: opacity .18s var(--ease), transform .45s var(--spring-soft), visibility 0s .45s;
+  scrollbar-width: none;
+}
+.gsel-menu.up { transform-origin: bottom left; transform: translateY(8px) scale(.94); }
+.gsel-menu.open { opacity: 1; visibility: visible; transform: none; transition: opacity .2s var(--ease), transform .55s var(--spring), visibility 0s; }
+.gsel-menu:focus { outline: none; }
+.gsel-hl {
+  position: absolute; left: 5px; right: 5px; top: 0;
+  border-radius: 6px;
+  background: var(--fill-hover);
+  opacity: 0;
+  transition: transform .4s var(--spring-soft), height .4s var(--spring-soft), opacity .2s;
+  pointer-events: none;
+}
+.gsel-opt {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 12px 7px 9px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  translate: 0 -6px;
+  transition: opacity .3s var(--ease), translate .5s var(--spring-soft);
+}
+.gsel-menu.open .gsel-opt { opacity: 1; translate: 0 0; transition-delay: calc(var(--i) * 22ms); }
+.gsel-check { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--accent-text); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transform: scale(.5); transition: opacity .25s, transform .5s var(--spring); }
+.gsel-opt[aria-selected="true"] .gsel-check { opacity: 1; transform: none; }
+.gsel-opt[aria-selected="true"] { font-weight: 500; }
+.gsel-code { margin-left: auto; padding-left: 14px; font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; }
+
+/* ---- how it works: four numbered steps under a rule that lights in turn ---- */
+.flow { margin: 40px auto 0; }
+.flow ol { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 0; padding: 0; list-style: none; }
+.flow li {
+  position: relative;
+  display: flex; flex-direction: column;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-strong);
+  text-align: left; font-size: 12.5px; line-height: 1.45; color: var(--muted);
+}
+.flow li::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px;
+  background: var(--ai);
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  animation: flow-fill 6s var(--ease) infinite;
+  animation-delay: calc(var(--i) * 1.5s - 6s);
+}
+@keyframes flow-fill {
+  0% { transform: scaleX(0); opacity: 1; }
+  18% { transform: scaleX(1); opacity: 1; }
+  55% { transform: scaleX(1); opacity: 1; }
+  75%, 100% { transform: scaleX(1); opacity: 0; }
+}
+.flow-num {
+  font-size: 11px; font-weight: 500; letter-spacing: .06em; font-variant-numeric: tabular-nums;
+  color: var(--faint);
+  animation: flow-num 6s var(--ease) infinite;
+  animation-delay: calc(var(--i) * 1.5s - 6s);
+}
+@keyframes flow-num { 0%, 50% { color: var(--text); } 75%, 100% { color: var(--faint); } }
+.flow b { margin: 6px 0 2px; color: var(--text); font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+
+/* ---- your videos ---- */
+.library { scroll-margin-top: calc(var(--bar-h) + 24px); }
+.library h2 { margin: 0 0 16px; }
+.empty {
+  margin: 0;
+  padding: 26px 20px;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--line-strong);
+  color: var(--muted);
+  text-align: center;
+  font-size: 14px;
+}
+#episodes .item { align-items: center; padding: 10px 16px 10px 10px; }
+#episodes .item > span:first-child {
+  position: relative;
+  width: 38px; height: 50px;
+  border-radius: 6px;
+  background: linear-gradient(160deg, #ff9f0a, #ff375f 60%, #2a0f1a);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+#episodes .item:nth-child(4n+2) > span:first-child { background: linear-gradient(160deg, #a77bff, #5e5ce6 60%, #120f2a); }
+#episodes .item:nth-child(4n+3) > span:first-child { background: linear-gradient(160deg, #64d2ff, #0a84ff 60%, #0a1626); }
+#episodes .item:nth-child(4n+4) > span:first-child { background: linear-gradient(160deg, #66d4a0, #30a46c 60%, #0b1f15); }
+#episodes .item > span:first-child::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: 0; height: 0; translate: -35% -50%;
+  border-left: 9px solid rgba(255, 255, 255, .92);
+  border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+}
+#episodes .item .side { display: flex; align-items: center; gap: 10px; }
+#episodes .item .side::after {
+  content: ""; width: 7px; height: 7px;
+  border-top: 1.6px solid var(--muted); border-right: 1.6px solid var(--muted);
+  rotate: 45deg;
+  opacity: .5;
+  transition: translate .45s var(--spring), opacity .3s;
+}
+#episodes .item:hover .side::after { translate: 3px 0; opacity: 1; }
+#episodes .item:hover { transform: translateY(-1px); }
+.badge:not(.good):not(.bad) {
+  color: var(--text);
+  background: linear-gradient(90deg, transparent 30%, var(--fill-hover) 50%, transparent 70%) 0 0 / 300% 100%;
+  animation: shimmer 2.4s linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+
+/* ---- pricing: rises in when reached; prices count up, minute bars fill (home.js adds .seen) ---- */
+.pricing { margin-top: 96px; scroll-margin-top: calc(var(--bar-h) + 24px); }
+.pricing h2 { margin: 0; }
+.pricing-sub { margin: 6px 0 18px; font-size: 14px; color: var(--muted); }
+.plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.plan {
+  position: relative;
+  display: flex; flex-direction: column;
+  padding: 22px 22px 24px;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
+  border: 1px solid var(--line);
+  box-shadow: var(--rim), var(--lift);
+  opacity: 0;            /* no blur of its own: the veil behind is already frosted */
+  transform: translateY(26px);
+  transition: opacity .9s var(--ease), transform 1.2s var(--spring-soft);
+}
+.plan + .plan { transition-delay: .14s; }
+.pricing.seen .plan { opacity: 1; transform: none; }
+.plan h3 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 15px; font-weight: 600; }
+.plan-tag {
+  padding: 1px 7px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line-strong);
+  font-size: 11px; font-weight: 600;
+  background: var(--ai-text); background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  animation: ai-flow 7s linear infinite;
+}
+.price { display: flex; align-items: baseline; margin: 16px 0 0; }
+.price .cur { align-self: flex-start; margin: 5px 2px 0 0; font-size: 22px; font-weight: 500; color: var(--muted); }
+.price b { font-size: 54px; font-weight: 600; line-height: 1; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.price .per { margin-left: 8px; font-size: 14px; color: var(--muted); }
+.minutes { margin: 16px 0 8px; font-size: 14px; color: var(--muted); }
+.minutes b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.meter { display: block; height: 4px; border-radius: 2px; background: var(--fill); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--ai); transform-origin: 0 50%; transform: scaleX(0); transition: transform 1.8s var(--ease) .35s; }
+.pricing.seen .meter i { transform: scaleX(var(--fill)); }
+.rate { margin: 8px 0 18px; font-size: 12px; color: var(--faint); }
+.plan ul { display: grid; gap: 9px; margin: auto 0 0; padding: 16px 0 0; border-top: 1px solid var(--line); list-style: none; font-size: 13.5px; }
+.plan li { display: flex; align-items: flex-start; gap: 9px; }
+.plan li svg { flex: none; width: 16px; height: 16px; margin-top: 2px; fill: none; stroke: var(--good); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.plan-plus { border-color: transparent; }
+.plan-ring {
+  /* a colour wheel turning under a one-pixel border */
+  position: absolute; inset: -1px;
+  border-radius: inherit;
+  padding: 1.2px;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.plan-ring::before {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: 170%; aspect-ratio: 1;
+  translate: -50% -50%;
+  background: conic-gradient(#ffb340, #ff5e8a, #a77bff, #5ac8fa, #ffb340);
+  animation: turn 9s linear infinite;
+}
+
+.fineprint { margin: 56px auto 0; max-width: 440px; text-align: center; font-size: 12px; line-height: 1.6; color: var(--faint); }
+
+/* ---- the pointer's soft light ---- */
+.aura {
+  position: fixed; left: 0; top: 0; z-index: 0;
+  width: 700px; height: 700px; margin: -350px 0 0 -350px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--aura), transparent 62%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1s var(--ease);
+  will-change: transform;
+}
+body.pointer[data-screen="home"] .aura { opacity: 1; }
+
+/* ---- the walls of example clips ---- */
+.reels {
+  position: fixed; inset: 0; z-index: 0;
+  display: grid;
+  /* minmax(0, ...): the walls' width comes from the window, never from their clips */
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--center)) minmax(0, 1fr);
+  overflow: hidden;
+  perspective: 1500px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .8s var(--ease), visibility 0s .8s, filter .5s var(--ease);
+}
+body[data-screen="home"] .reels { opacity: 1; visibility: visible; transition: opacity 1.6s var(--ease) .25s, visibility 0s, filter .5s var(--ease); }
+.reel-side {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  justify-content: space-evenly;
+  height: 100%;
+  pointer-events: auto;
+  -webkit-mask: linear-gradient(180deg, transparent, #000 16%, #000 84%, transparent);
+  mask: linear-gradient(180deg, transparent, #000 16%, #000 84%, transparent);
+  --px: 0;
+  --py: 0;
+}
+.reel-side.left {
+  grid-column: 1;
+  padding-right: 24px;
+  transform-origin: 0 50%;
+  transform: translate3d(calc(var(--px) * -10px), calc(var(--py) * -8px), 0) rotateY(calc(13deg + var(--px) * 3deg)) rotateX(calc(var(--py) * -2deg));
+}
+.reel-side.right {
+  grid-column: 3;
+  padding-left: 24px;
+  transform-origin: 100% 50%;
+  transform: translate3d(calc(var(--px) * -10px), calc(var(--py) * -8px), 0) rotateY(calc(-13deg + var(--px) * 3deg)) rotateX(calc(var(--py) * -2deg));
+}
+/* At launch the columns come in one by one (home.js, bringInColumns); until
+   then they stay hidden, so none is seen standing still first. */
+body:not(.walls-in) .reel-col:not(.arrived) { visibility: hidden; }
+
+/* --col-w is set by home.js (fitWalls) so four columns fit a side */
+.reel-col { flex: none; width: var(--col-w, var(--reel-w)); container-type: inline-size; }
+.reel-track { will-change: transform; }
+
+/* One clip: a photo or a muted video, with the caption burned in on top. */
+.reel {
+  position: relative;
+  display: block;
+  aspect-ratio: 9 / 16;
+  margin-bottom: var(--reel-gap);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  isolation: isolate;
+  background: #111;
+  font-size: 6.2cqi;
+  color: #fff;
+  box-shadow: 0 0 0 1px var(--reel-ring), 0 26px 50px -26px var(--reel-shadow);
+  transition: transform .6s var(--spring-soft), box-shadow .5s var(--ease);
+}
+.reel:hover { transform: scale(1.045); box-shadow: 0 0 0 1px var(--line-strong), 0 30px 70px -20px var(--reel-shadow); }
+.reel::before {
+  content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: var(--reel-dim);
+  transition: opacity .5s var(--ease);
+}
+.reel:hover::before { opacity: 0; }
+.reel::after {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .45), transparent 20%, transparent 48%, rgba(0, 0, 0, .25) 62%, rgba(0, 0, 0, .7));
+}
+/* Only clips on screen animate inside. */
+.reel:not(.live), .reel:not(.live) *,
+body:not([data-screen="home"]) .reel, body:not([data-screen="home"]) .reel * { animation-play-state: paused !important; }
+
+.reel-media { position: absolute; inset: 0; transform-origin: 50% 30%; }
+.reel-media.punch { transform: scale(1.16); }          /* the editor's punch-in, cut not eased */
+.reel-media img, .reel-media video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.reel-top { position: absolute; z-index: 2; top: .8em; left: .8em; right: .8em; display: flex; justify-content: space-between; }
+.chip {
+  display: inline-flex; align-items: center; gap: .35em;
+  padding: .2em .5em;
+  border-radius: 3px;
+  font-size: .9em; font-weight: 500; line-height: 1.35;
+  background: rgba(0, 0, 0, .42);
+  -webkit-backdrop-filter: none;
+}
+.chip svg { width: .85em; height: .85em; fill: currentColor; }
+.chip.score svg { color: #ffd60a; }
+
+.reel-stitch {
+  position: absolute; z-index: 2; left: .8em; top: 2.6em;
+  display: inline-flex; align-items: center; gap: .35em;
+  padding: .2em .55em .2em .45em;
+  border-radius: 3px;
+  font-size: .85em; font-weight: 500;
+  background: rgba(0, 0, 0, .5);
+  box-shadow: inset 0 0 0 1px rgba(255, 214, 10, .6);
+}
+.reel-stitch svg { width: 1.1em; height: 1.1em; fill: none; stroke: #ffd60a; stroke-width: 1.6; stroke-linecap: round; }
+
+.reel-foot { position: absolute; z-index: 2; left: .8em; right: .8em; bottom: .85em; }
+.reel-title { display: block; margin-bottom: .55em; font-size: 1em; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgba(255, 255, 255, .92); }
+.reel-bar { display: block; height: 2px; background: rgba(255, 255, 255, .25); overflow: hidden; }
+.reel-bar i { display: block; height: 100%; background: #fff; transform-origin: 0 50%; animation: fill var(--len) linear infinite; animation-delay: var(--off); }
+@keyframes fill { from { transform: scaleX(0); } }
+
+/* Captions, drawn the way Clipsy's presets burn them (engine/make_short.py). */
+.reel-cap {
+  --o: .07em;
+  --stroke: #000;
+  --ink: #fff;
+  --spoken: #ffd700;
+  position: absolute; z-index: 2; left: .45em; right: .45em; top: 60%;
+  margin: 0;
+  contain: layout style;   /* a word changing never re-lays out the rest of the card */
+  text-align: center;
+  font: 800 1.78em/1.15 Arial, "Helvetica Neue", Helvetica, sans-serif;
+  text-transform: uppercase;
+  color: var(--ink);
+  text-shadow:
+    var(--o) var(--o) 0 var(--stroke), calc(var(--o) * -1) var(--o) 0 var(--stroke),
+    var(--o) calc(var(--o) * -1) 0 var(--stroke), calc(var(--o) * -1) calc(var(--o) * -1) 0 var(--stroke),
+    0 .1em .4em rgba(0, 0, 0, .45);
+}
+/* the spoken word changes at once, as burned-in captions do; no per-word animation */
+.reel-cap span { display: inline-block; margin: 0 .07em; }
+.reel-cap span.on { color: var(--spoken); transform: scale(1.08); }
+
+.reel-cap[data-style="yellow"] { font: 400 1.95em/1.1 Impact, "Arial Narrow", sans-serif; letter-spacing: .02em; --ink: #ffff00; --spoken: #ff4500; }
+.reel-cap[data-style="minimal"] { font: 700 1.6em/1.2 "Segoe UI", system-ui, sans-serif; --o: .035em; --spoken: #00ffff; }
+.reel-cap[data-style="neon"] { font: 400 1.95em/1.1 Impact, "Arial Narrow", sans-serif; --ink: #ffff00; --spoken: #ffffff; text-shadow: 0 0 .08em #ffa500, 0 0 .25em #ffa500, 0 0 .6em rgba(255, 165, 0, .7); }
+.reel-cap[data-style="electric"] { --ink: #00ffff; --spoken: #ffffff; text-shadow: 0 0 .08em #0099ff, 0 0 .25em #0099ff, 0 0 .6em rgba(0, 153, 255, .7); }
+.reel-cap[data-style="impact"] { font: 400 1.95em/1.1 Impact, "Arial Narrow", sans-serif; --ink: #ff3030; --spoken: #ffffff; }
+.reel-cap[data-style="mint"] { --ink: #00d4d4; --spoken: #ffffff; }
+.reel-cap[data-style="sunburst"] { font: 400 1.95em/1.12 Impact, "Arial Narrow", sans-serif; }
+.reel-cap[data-style="pop"] span.on, .reel-cap[data-style="sunburst"] span.on {
+  padding: 0 .14em; border-radius: .08em;
+  color: #000; text-shadow: none;
+  transform: scale(1.06);
+}
+.reel-cap[data-style="pop"] span.on { background: #00ffff; }
+.reel-cap[data-style="sunburst"] span.on { background: #ffd700; }
+.reel-cap[data-style="boxed"], .reel-cap[data-style="ink"] { text-shadow: none; line-height: 1.32; }
+.reel-cap[data-style="boxed"] b, .reel-cap[data-style="ink"] b {
+  padding: .06em .28em;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  background: rgba(0, 0, 0, .62);
+}
+.reel-cap[data-style="ink"] b { background: #fff; }
+.reel-cap[data-style="ink"] { --ink: #000; --spoken: #ff0000; }
+.reel-cap b { font: inherit; }
+
+/* ---- shorter desktop windows: the hero still fits one screen, steps included ---- */
+@media (min-width: 900px) and (max-height: 900px) {
+  .intro { padding: 14px 0 20px; }
+  .headline { margin: 6px 0 12px; font-size: clamp(40px, 8.2vh, 68px); }
+  .drop-wrap { margin-top: 22px; }
+  .drop { padding: 22px 22px 14px; }
+  .drop-icon { width: 52px; height: 52px; margin-bottom: 8px; }
+  .glyph { width: 22px; height: 22px; }
+  .drop-release { top: 84px; }
+  .scan { margin-top: 14px; }
+  .scan-arc { height: 24px; }
+  .scan-film { height: 50px; }
+  .scan-times { margin-top: 6px; }
+  .drop-controls { padding-top: 8px; }
+  .flow { margin-top: 24px; }
+}
+
+/* ---- smaller screens ---- */
+@media (max-width: 899px) {
+  /* no room beside the column: the walls go behind it, dimmed */
+  .reels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); perspective: none; }
+  body[data-screen="home"] .reels { opacity: .2; }
+  .reel-side.left, .reel-side.right { transform: none; padding: 0; animation: none !important; }
+  .reel-side.left { grid-column: 1; justify-content: flex-start; margin-left: calc(var(--reel-w) * -.45); }
+  .reel-side.right { grid-column: 2; justify-content: flex-end; margin-right: calc(var(--reel-w) * -.45); }
+  .reel-side { pointer-events: none; }
+  .reel-col { flex: none; width: var(--reel-w); }
+}
+@media (max-width: 640px) {
+  :root { --reel-w: 130px; }
+  .bar-inner { padding: 0 14px; gap: 10px; }
+  .hero { padding-top: 14px; }
+  .drop { padding: 26px 14px 18px; }
+  .drop-ring::before { width: 260%; }
+  .flow ol { grid-template-columns: repeat(2, 1fr); row-gap: 22px; }
+  .plans { grid-template-columns: 1fr; }
+}
+
+/* ---- scrolling: the hero eases away ---- */
+@supports (animation-timeline: scroll()) {
+  body.entered .hero {
+    animation: hero-away linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 480px;
+  }
+  @keyframes hero-away { to { opacity: .12; transform: translateY(-36px) scale(.965); } }
+}
+
+/* Reduced motion: the clips keep playing, because they are what the page is
+   showing; what goes is movement of the page itself (tilt, parallax, blur
+   and slide-ins, scroll effects, overshoot). */
+@media (prefers-reduced-motion: reduce) {
+  body:not(.entered) .reveal, body:not(.entered) .headline .w, body:not(.entered) .bar,
+  body:not(.entered) .drop-wrap {
+    animation: fade .8s ease both;
+  }
+  /* one word fades out, then the next fades in, so they never overlap */
+  .rot-word, .rot-word.is-out { transform: none; filter: none; transition: opacity .25s ease; }
+  .rot-word.is-on { transition-delay: .25s; }
+  body.entered .hero { animation: none; }
+  .reel:hover, .drop-icon, .drop-card { scale: none; transform: none; animation-name: none; }
+}

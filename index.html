@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Clipsy</title>
+  <script>
+    // Set the theme before anything is drawn: a saved choice, else the system's.
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem("clipsy-theme"); } catch (e) {}
+      var light = saved ? saved === "light" : matchMedia("(prefers-color-scheme: light)").matches;
+      document.documentElement.dataset.theme = light ? "light" : "dark";
+    })();
+  </script>
+  <link rel="preload" href="static/fonts/poppins-600.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="static/fonts/poppins-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="static/fonts/poppins-500.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="static/app.css">
+  <link rel="stylesheet" href="static/home.css">
+<style>
+  /* Front-page preview: no account, so no videos; and it doesn't run on the viewer's computer. */
+  #nav-library, #library, .fineprint { display: none !important; }
+</style>
+</head>
+<body>
+  <!-- Light, colour and grain behind every screen -->
+  <div class="backdrop" aria-hidden="true">
+    <span class="orb orb-1"></span>
+    <span class="orb orb-2"></span>
+    <span class="orb orb-3"></span>
+    <span class="orb orb-4"></span>
+    <span class="stage"></span>
+    <span class="grain"></span>
+  </div>
+  <div class="aura" id="aura" aria-hidden="true"></div>
+
+  <!-- Two walls of example clips either side of the home screen (home.js fills them) -->
+  <div class="reels" id="reels" aria-hidden="true" data-media="static/home-media/">
+    <div class="reel-side left"></div>
+    <div class="reel-side right"></div>
+  </div>
+  <div class="veil" id="veil" aria-hidden="true"></div>
+
+  <header class="bar" id="bar">
+    <div class="bar-inner">
+      <a class="brand" href="#/">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="5.5" y="3" width="13" height="18" rx="2.5"/><path d="M10.4 9.1v5.8l4.6-2.9z"/></svg>
+        </span>
+        Clipsy
+      </a>
+      <div class="bar-actions">
+        <a class="nav-link" id="nav-library" href="#/" data-section="library">Your videos</a>
+        <a class="nav-link" id="nav-pricing" href="#/" data-section="pricing">Pricing</a>
+        <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch to light mode">
+          <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></svg>
+          <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <p id="problem" class="notice bad" hidden></p>
+    <p id="flash" class="notice bad" hidden></p>
+
+    <!-- Home: upload a video, see the ones already here -->
+    <section id="home" hidden>
+      <div class="intro" id="intro">
+        <div class="hero">
+          <h1 class="headline">
+            <span class="sr-only">Long video in. Shorts out.</span>
+            <span aria-hidden="true">
+              <span class="line">
+                <span class="w" style="--d:1">Long</span>
+                <span class="w" style="--d:2">video</span>
+                <span class="w" style="--d:3">in.</span>
+              </span>
+              <span class="line">
+                <span class="rotator w" style="--d:4" id="rotator">
+                  <span class="rot-word is-on">Shorts</span>
+                  <span class="rot-word">Stories</span>
+                  <span class="rot-word">Moments</span>
+                  <span class="rot-word">Reels</span>
+                </span>
+                <span class="w" style="--d:5">out.</span>
+              </span>
+            </span>
+          </h1>
+        </div>
+
+        <div class="drop-wrap">
+        <span class="drop-glow" aria-hidden="true"></span>
+        <form id="upload" class="drop-card">
+          <span class="drop-ring" aria-hidden="true"></span>
+          <span class="drop-sheen" aria-hidden="true"></span>
+
+          <label class="drop" id="drop">
+            <input type="file" id="file" accept="video/*" hidden>
+            <span class="drop-icon" aria-hidden="true">
+              <span class="pulse"></span>
+              <span class="pulse"></span>
+              <svg class="glyph glyph-up" viewBox="0 0 24 24"><path d="M12 17V6.5M7 11l5-5 5 5"/></svg>
+              <svg class="glyph glyph-ok" viewBox="0 0 24 24"><path d="M6.5 12.5l3.6 3.6 7.4-8.1"/></svg>
+            </span>
+            <strong id="drop-title">Drop a video, or click to browse</strong>
+            <span id="drop-hint">Podcasts, streams, vlogs &middot; 30 seconds to 4 hours</span>
+            <span class="drop-release" aria-hidden="true">Let go to drop it in</span>
+
+            <!-- What Clipsy does, as a looping story on an editor's filmstrip of a long podcast:
+                 read every word, find the moments, cut them out, stitch a setup to its payoff,
+                 reframe to 9:16, caption it. home.js (startScan) plays it. -->
+            <span class="scan" id="scan" aria-hidden="true">
+              <span class="scan-arc">
+                <svg viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M8.25 19.5C8.25 2 78.75 2 78.75 19.5"/></svg>
+                <span class="scan-tag"><svg viewBox="0 0 16 16"><path d="M6.6 9.4l2.8-2.8M5.3 7.2 4 8.5a2.4 2.4 0 0 0 3.4 3.4l1.3-1.3M10.7 8.8 12 7.5a2.4 2.4 0 0 0-3.4-3.4L7.3 5.4"/></svg><span id="scan-tag-text">Stitched &middot; 4:02 + 41:30</span></span>
+              </span>
+              <span class="scan-film">
+                <span class="film film-dim"></span>
+                <span class="film film-lit"></span>
+                <span class="scan-shade"></span>
+                <span class="scan-moment" style="--l:5%; --w:6.5%"><i class="scan-crop"></i></span>
+                <span class="scan-moment" style="--l:39%; --w:7%"></span>
+                <span class="scan-moment" style="--l:75.5%; --w:6.5%"><i class="scan-crop"></i></span>
+                <i class="scan-cut" style="--x:5%"></i><i class="scan-cut" style="--x:11.5%"></i>
+                <i class="scan-cut" style="--x:39%"></i><i class="scan-cut" style="--x:46%"></i>
+                <i class="scan-cut" style="--x:75.5%"></i><i class="scan-cut" style="--x:82%"></i>
+                <span class="scan-head"><i></i></span>
+              </span>
+              <span class="scan-ruler"></span>
+              <span class="scan-times">
+                <span class="scan-steps">
+                  <span class="scan-step"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h12M4 17h8"/></svg>Reading every word</span>
+                  <span class="scan-step"><svg viewBox="0 0 24 24"><path d="M12 3c.6 4.6 4.4 8.4 9 9-4.6.6-8.4 4.4-9 9-.6-4.6-4.4-8.4-9-9 4.6-.6 8.4-4.4 9-9z"/></svg>Finding the moments</span>
+                  <span class="scan-step"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.6"/><circle cx="6" cy="17" r="2.6"/><path d="M8.2 8.6 20 17M8.2 15.4 20 7"/></svg>Cutting them out</span>
+                  <span class="scan-step"><svg viewBox="0 0 24 24"><path d="M9.5 14.5l5-5M7.6 11.1 5.8 12.9a3.6 3.6 0 0 0 5.1 5.1l1.8-1.8M16.4 12.9l1.8-1.8a3.6 3.6 0 0 0-5.1-5.1l-1.8 1.8"/></svg>Stitching setup + payoff</span>
+                  <span class="scan-step"><svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3M21 8V5.5A2.5 2.5 0 0 0 18.5 3M3 16v2.5A2.5 2.5 0 0 0 5.5 21M21 16v2.5a2.5 2.5 0 0 1-2.5 2.5"/></svg>Reframing to 9:16</span>
+                  <span class="scan-step"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M7 15h4M13 15h4M7 11.5h10"/></svg>Captioning word by word</span>
+                </span>
+                <span class="scan-sent" id="scan-sent"></span>
+                <span id="scan-length">52:40</span>
+              </span>
+              <!-- the finished short: the setup, then a cut to the payoff, captioned -->
+              <span class="scan-clip">
+                <i class="clip-frame clip-setup"></i>
+                <i class="clip-frame clip-payoff"></i>
+                <b class="clip-line"><span>Wait</span> <span>for</span></b>
+                <b class="clip-line"><span>the</span> <span>payoff</span></b>
+                <i class="clip-bar"><i></i></i>
+              </span>
+            </span>
+          </label>
+
+          <div class="drop-controls">
+            <button type="submit" id="upload-button" class="primary" disabled>
+              Get started
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/></svg>
+            </button>
+          </div>
+          <progress id="upload-progress" max="100" value="0" hidden></progress>
+        </form>
+        </div>
+
+        <div class="flow reveal" style="--d:9">
+          <ol aria-label="How it works">
+            <li style="--i:0"><span class="flow-num">01</span><b>Transcribe</b>Every word, timed</li>
+            <li style="--i:1"><span class="flow-num">02</span><b>Find</b>Moments that land on their own</li>
+            <li style="--i:2"><span class="flow-num">03</span><b>Stitch</b>A setup and its payoff, joined</li>
+            <li style="--i:3"><span class="flow-num">04</span><b>Caption</b>Vertical, word by word</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="below">
+        <section class="library" id="library">
+          <h2>Your videos</h2>
+          <p id="no-episodes" class="empty" hidden>Nothing here yet. Your first video will show up here while it is analysed.</p>
+          <div id="episodes" class="list"></div>
+        </section>
+
+        <section class="pricing" id="pricing" aria-labelledby="pricing-title">
+          <h2 id="pricing-title">Pricing</h2>
+          <p class="pricing-sub">Pay for the video you put in. Minutes renew every month.</p>
+          <div class="plans">
+            <article class="plan">
+              <h3>Pro</h3>
+              <p class="price"><span class="cur">$</span><b data-count="10">10</b><span class="per">/ month</span></p>
+              <p class="minutes"><b data-count="300">300</b> minutes of video</p>
+              <span class="meter" aria-hidden="true"><i style="--fill:.3"></i></span>
+              <p class="rate">About 5 hours &middot; 3.3&cent; a minute</p>
+              <ul>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9.5"/></svg>Moments picked from the whole video</li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9.5"/></svg>Captions in 18 styles, word by word</li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9.5"/></svg>Vertical framing that follows faces</li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9.5"/></svg>Long pauses trimmed</li>
+              </ul>
+            </article>
+            <article class="plan plan-plus">
+              <span class="plan-ring" aria-hidden="true"></span>
+              <h3>Plus <span class="plan-tag">Best value</span></h3>
+              <p class="price"><span class="cur">$</span><b data-count="30">30</b><span class="per">/ month</span></p>
+              <p class="minutes"><b data-count="1000">1,000</b> minutes of video</p>
+              <span class="meter" aria-hidden="true"><i style="--fill:1"></i></span>
+              <p class="rate">Over 16 hours &middot; 3&cent; a minute</p>
+              <ul>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9.5"/></svg>Everything in Pro</li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9.5"/></svg>More than three times the minutes</li>
+                <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9.5"/></svg>The lowest price per minute</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <p class="fineprint">
+          Runs on this computer. Audio goes to your speech-to-text provider and the transcript to your
+          model&thinsp;&mdash;&thinsp;nothing else leaves the machine.
+        </p>
+      </div>
+    </section>
+
+    <!-- One video: its moments, and the clips made from them -->
+    <section id="episode" hidden>
+      <a class="back" href="#/">&larr; All videos</a>
+      <header class="ep-head">
+        <div class="ep-title">
+          <h1 id="episode-title"></h1>
+          <p id="episode-meta" class="muted"></p>
+        </div>
+        <div class="ep-actions">
+          <a id="mark-link" class="ep-mark" href="#">Mark clips for the golden set &rarr;</a>
+          <button type="button" class="quiet" id="delete-episode">Delete video</button>
+        </div>
+      </header>
+
+      <!-- While the video is analysed: the step it is on, and the steps around it -->
+      <div id="analysis" class="card ep-progress" hidden>
+        <div class="ep-progress-main">
+          <span class="ep-stage" id="analysis-stage"></span>
+          <p id="analysis-message"></p>
+          <div class="ep-bar">
+            <progress id="analysis-progress" max="100" value="0"></progress>
+            <span id="analysis-percent"></span>
+          </div>
+          <button type="button" id="retry" hidden>Try again</button>
+        </div>
+        <ul class="ep-steps" id="analysis-steps" aria-hidden="true"></ul>
+      </div>
+
+      <div class="ep-body">
+        <div class="ep-main">
+          <div id="moments-panel" hidden>
+            <h2>Moments</h2>
+            <p id="no-moments" class="muted" hidden>No clip-worthy moments were found in this video.</p>
+            <div id="moments" class="list"></div>
+          </div>
+
+          <div id="clips-panel" hidden>
+            <h2>Clips</h2>
+            <div id="clips" class="clips"></div>
+          </div>
+        </div>
+
+        <aside class="ep-side">
+          <!-- Every option is shown as a still of this video, drawn by the render's own code -->
+          <div id="render-bar" class="card render-bar" hidden>
+            <div class="look-head">
+              <h3>Make clips</h3>
+              <span class="muted" id="look-from"></span>
+            </div>
+
+            <div class="look-section">
+              <span class="look-label">Framing</span>
+              <div class="framings" id="framings" role="radiogroup" aria-label="Framing"></div>
+              <p class="look-note muted" id="look-note" hidden></p>
+            </div>
+
+            <div class="look-section">
+              <label class="look-label look-toggle"><input type="checkbox" id="opt-captions" checked> Captions</label>
+              <button type="button" class="style-pick" id="style-pick" aria-haspopup="dialog" aria-expanded="false">
+                <span class="look-shot style-shot"><img id="style-current" alt=""></span>
+                <span class="style-pick-row"><span id="style-current-name">Spotlight</span><span class="muted">Caption setup &rsaquo;</span></span>
+              </button>
+            </div>
+
+            <label class="look-toggle"><input type="checkbox" id="opt-silence"> Trim long pauses</label>
+            <button type="button" id="render-button" disabled>Make clip</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Marking: the clips you'd post. The engine is taught and scored with these. -->
+    <section id="label" hidden>
+      <a class="back" id="label-back" href="#/">&larr; Back to the video</a>
+      <div class="title-row">
+        <h1 id="label-title"></h1>
+        <label>Golden set
+          <select id="golden">
+            <option value="">Not in it</option>
+            <option value="test">Test (scores the engine)</option>
+            <option value="teach">Teach (becomes its examples)</option>
+          </select>
+        </label>
+      </div>
+      <p class="muted">Click a sentence to jump there. Click the first sentence of a part, shift-click its last,
+        then <b>Add part</b>. A stitched clip has up to 4 parts, played in the order you add them.</p>
+
+      <div class="label-grid">
+        <div class="label-side">
+          <video id="label-video" controls playsinline preload="metadata"></video>
+          <div class="card draft">
+            <div id="draft-parts" class="muted">No parts yet.</div>
+            <div class="row">
+              <span id="selection" class="muted">Nothing selected</span>
+              <span>
+                <button type="button" id="add-part" disabled>Add part</button>
+                <button type="button" id="play-draft" disabled>Play</button>
+                <button type="button" class="quiet" id="clear-draft" disabled>Clear</button>
+              </span>
+            </div>
+            <input id="label-note" maxlength="300" placeholder="Why? (optional, helps tune the engine)">
+            <div class="row">
+              <button type="button" id="save-good" disabled>I'd post this</button>
+              <button type="button" id="save-bad" disabled>Must never be picked</button>
+            </div>
+          </div>
+          <h2>Marked here (<span id="label-count">0</span>)</h2>
+          <div id="labels" class="list"></div>
+        </div>
+        <div id="transcript" class="transcript"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Caption setup: every choice previewed on this video, drawn by the render's own code -->
+  <div class="studio" id="caption-studio" role="dialog" aria-modal="true" aria-labelledby="studio-title" hidden>
+    <div class="studio-sheet">
+      <header class="studio-head">
+        <div>
+          <h2 id="studio-title">Caption setup</h2>
+          <p class="muted" id="studio-from"></p>
+        </div>
+        <button type="button" class="primary" id="studio-done">Done</button>
+      </header>
+      <div class="studio-body">
+        <div class="studio-preview">
+          <div class="studio-frame">
+            <span class="look-shot studio-shot"><img id="studio-still" alt=""></span>
+            <video id="studio-motion" muted loop playsinline preload="auto"></video>
+            <span class="studio-status" id="studio-status" role="status"></span>
+          </div>
+          <div class="studio-preview-bar">
+            <span class="muted" id="studio-style-name"></span>
+            <button type="button" class="ghost" id="studio-sound" aria-pressed="false">Sound on</button>
+          </div>
+        </div>
+        <div class="studio-controls">
+          <section class="studio-group">
+            <h3>Style</h3>
+            <div id="studio-styles" class="studio-styles"></div>
+          </section>
+          <section class="studio-group" id="studio-colors-group">
+            <h3>Colours</h3>
+            <div id="studio-colors" class="studio-colors"></div>
+          </section>
+          <section class="studio-group studio-pair">
+            <label class="studio-slider">
+              <span>Size <output id="studio-size-value"></output></span>
+              <input type="range" id="studio-size" min="60" max="150" step="5">
+            </label>
+            <label class="studio-slider">
+              <span>Height <output id="studio-position-value"></output></span>
+              <input type="range" id="studio-position" min="8" max="92" step="1">
+            </label>
+          </section>
+          <section class="studio-group studio-pair">
+            <div>
+              <h3>Words on screen</h3>
+              <div class="seg" id="studio-words" role="radiogroup" aria-label="Words on screen"></div>
+            </div>
+            <div>
+              <h3>Letters</h3>
+              <div class="seg" id="studio-case" role="radiogroup" aria-label="Letters">
+                <button type="button" data-case="upper">ALL CAPS</button>
+                <button type="button" data-case="as-said">As said</button>
+              </div>
+            </div>
+          </section>
+          <section class="studio-group">
+            <label class="look-toggle"><input type="checkbox" id="studio-emoji"> Emoji over key words</label>
+          </section>
+          <footer class="studio-foot">
+            <button type="button" class="ghost" id="studio-reset">Reset this style</button>
+            <span class="muted">Used for every clip you make until you change it.</span>
+          </footer>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+// Front-page preview. There is no server here, so the page's questions are
+// answered with what it had when exported, and uploads say they're a preview.
+(() => {
+  const CONFIG = {"caption_colors": {"accent": "Accent", "active": "Spoken word", "outline": "Outline", "text": "Text"}, "caption_styles": [{"best": "Advice, hot takes", "case": "upper", "colors": {"active": "#FFE600", "outline": "#000000", "text": "#FFFFFF"}, "emoji": false, "family": "Loud and bold", "fixed_words": false, "id": "spotlight", "name": "Spotlight", "position": 0.72, "words": 3}, {"best": "Fast talkers, hooks", "case": "upper", "colors": {"active": "#FFE600", "outline": "#000000", "text": "#FFFFFF"}, "emoji": false, "family": "Loud and bold", "fixed_words": true, "id": "punch", "name": "One Word", "position": 0.72, "words": 1}, {"best": "Hooks, reactions", "case": "upper", "colors": {"accent": "#FFD400", "outline": "#000000", "text": "#FFFFFF"}, "emoji": false, "family": "Loud and bold", "fixed_words": false, "id": "duotone", "name": "Duo Tone", "position": 0.72, "words": 2}, {"best": "Gaming, sports", "case": "upper", "colors": {"accent": "#FF3D7F", "text": "#FFFFFF"}, "emoji": false, "family": "Loud and bold", "fixed_words": false, "id": "extrude", "name": "Extrude 3D", "position": 0.72, "words": 2}, {"best": "Tutorials, lists", "case": "upper", "colors": {"accent": "#FFE600", "active": "#111111", "text": "#FFFFFF"}, "emoji": false, "family": "The spoken word lights up", "fixed_words": false, "id": "marker", "name": "Highlighter", "position": 0.72, "words": 3}, {"best": "Podcasts, interviews", "case": "upper", "colors": {"accent": "#FF2E63", "text": "#FFFFFF"}, "emoji": false, "family": "The spoken word lights up", "fixed_words": false, "id": "block", "name": "Travel Block", "position": 0.72, "words": 3}, {"best": "Business, LinkedIn", "case": "as-said", "colors": {"accent": "#FFD60A", "text": "#FFFFFF"}, "emoji": false, "family": "The spoken word lights up", "fixed_words": false, "id": "underline", "name": "Underline", "position": 0.72, "words": 4}, {"best": "Fashion, design", "case": "upper", "colors": {"text": "#FFFFFF"}, "emoji": false, "family": "The spoken word lights up", "fixed_words": false, "id": "hollow", "name": "Outline Fill", "position": 0.72, "words": 3}, {"best": "Storytelling", "case": "as-said", "colors": {"active": "#FFD60A", "text": "#FFFFFF"}, "emoji": false, "family": "Words that move in", "fixed_words": false, "id": "buildup", "name": "Build-up", "position": 0.72, "words": 4}, {"best": "Kids, fun channels", "case": "upper", "colors": {"outline": "#000000", "text": "#FFFFFF"}, "emoji": false, "family": "Words that move in", "fixed_words": false, "id": "drop", "name": "Bounce Drop", "position": 0.72, "words": 3}, {"best": "Numbers, announcements", "case": "upper", "colors": {"accent": "#111111", "active": "#FFD60A", "text": "#F2F2F2"}, "emoji": false, "family": "Words that move in", "fixed_words": false, "id": "flap", "name": "Split Flap", "position": 0.72, "words": 3}, {"best": "Motivation, quotes", "case": "upper", "colors": {"active": "#FFD60A", "text": "#FFFFFF"}, "emoji": false, "family": "Words that move in", "fixed_words": false, "id": "stack", "name": "Stacked", "position": 0.72, "words": 3}, {"best": "Aesthetic vlogs", "case": "as-said", "colors": {"text": "#FFFFFF"}, "emoji": false, "family": "Words that move in", "fixed_words": false, "id": "focus", "name": "Blur Focus", "position": 0.72, "words": 4}, {"best": "Comedy, skits", "case": "upper", "colors": {"active": "#FFFFFF", "outline": "#000000", "text": "#FFD400"}, "emoji": false, "family": "Playful", "fixed_words": false, "id": "comic", "name": "Comic Pop", "position": 0.72, "words": 3}, {"best": "Lifestyle, playful", "case": "upper", "colors": {"accent": "#FFFFFF", "active": "#FFD60A", "text": "#111111"}, "emoji": false, "family": "Playful", "fixed_words": false, "id": "sticker", "name": "Stickers", "position": 0.72, "words": 3}, {"best": "Creators, day-in-the-life", "case": "upper", "colors": {"active": "#FFD60A", "outline": "#000000", "text": "#FFFFFF"}, "emoji": true, "family": "Playful", "fixed_words": false, "id": "emoji", "name": "Emoji Pop", "position": 0.72, "words": 3}, {"best": "News, commentary", "case": "as-said", "colors": {"accent": "#FFD60A", "text": "#FFFFFF"}, "emoji": false, "family": "Clean and story-led", "fixed_words": false, "id": "lowerbar", "name": "News Bar", "position": 0.82, "words": 5}, {"best": "Tech, explainers", "case": "as-said", "colors": {"accent": "#FFD60A", "text": "#FFFFFF"}, "emoji": false, "family": "Clean and story-led", "fixed_words": false, "id": "typewriter", "name": "Typewriter", "position": 0.72, "words": 4}], "default_caption": "spotlight", "default_language": "auto", "framing_order": ["smart", "fit", "center"], "framings": {"center": "Centre crop", "fit": "Whole frame", "smart": "Follow faces"}, "languages": {"auto": "Auto-detect", "de": "German", "en": "English", "es": "Spanish", "fr": "French", "hi": "Hindi", "mr": "Marathi", "pa": "Punjabi", "ta": "Tamil", "te": "Telugu"}, "max_clip_seconds": 120, "max_source_seconds": 14400, "min_moment_seconds": 8, "min_source_seconds": 30, "preset_order": ["classic", "yellow", "boxed", "minimal", "neon", "electric", "pop", "sunburst", "impact", "mint", "ink"], "presets": {"boxed": "Boxed", "classic": "Classic", "electric": "Electric", "impact": "Impact", "ink": "Ink", "minimal": "Minimal", "mint": "Mint", "neon": "Neon", "pop": "Pop", "sunburst": "Sunburst", "yellow": "Highlighter"}, "problem": null};
+  const PREVIEW = "This is a preview of Clipsy's front page. Uploads open soon.";
+  const json = (body, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  const realFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    const path = new URL(typeof input === "string" ? input : input.url, location.href).pathname;
+    if (path.endsWith("/api/config")) return Promise.resolve(json(CONFIG));
+    if (path.endsWith("/api/episodes")) return Promise.resolve(json([]));
+    if (path.includes("/api/")) return Promise.resolve(json({ error: PREVIEW }, 404));
+    return realFetch(input, init);
+  };
+  // The upload: a progress bar that fills, then the preview message.
+  window.XMLHttpRequest = class {
+    constructor() { this.upload = {}; this.status = 0; this.responseText = ""; }
+    open() {}
+    setRequestHeader() {}
+    abort() {}
+    send() {
+      let sent = 0;
+      const step = () => {
+        sent = Math.min(100, sent + 8);
+        if (this.upload.onprogress) this.upload.onprogress({ lengthComputable: true, loaded: sent, total: 100 });
+        if (sent < 100) return setTimeout(step, 70);
+        this.status = 503;
+        this.responseText = JSON.stringify({ error: PREVIEW });
+        if (this.onload) this.onload();
+      };
+      setTimeout(step, 70);
+    }
+  };
+})();
+</script>
+  <script src="static/app.js"></script>
+  <script type="module" src="static/home.js"></script>
+</body>
+</html>
